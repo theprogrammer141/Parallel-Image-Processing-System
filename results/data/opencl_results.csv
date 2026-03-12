@@ -1,0 +1,6 @@
+version,operation,width,height,threads,processes,elapsed_sec,speedup
+opencl,grayscale,5461,8192,1,1,0.0883796,0
+opencl,gaussian_blur,5461,8192,1,1,0.539176,0
+opencl,sobel_edge,5461,8192,1,1,0.167099,0
+opencl,brightness,5461,8192,1,1,0.151061,0
+opencl,histogram_eq,5461,8192,1,1,0.858693,0
