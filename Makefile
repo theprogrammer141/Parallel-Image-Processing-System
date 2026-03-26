@@ -8,6 +8,7 @@
 #   make mpi        — build MPI version
 #   make hybrid     — build Hybrid MPI+OpenMP version
 #   make run        — run all versions with default settings
+#   make gui        — launch desktop GUI controller
 #   make benchmark  — run full benchmark suite via shell script
 #   make plot       — generate performance plots (requires Python)
 #   make clean      — remove build artefacts
@@ -46,7 +47,7 @@ IMAGE      ?= test_images/sample.jpg
 OMP_THREADS ?= 4
 MPI_PROCS   ?= 4
 
-.PHONY: all sequential openmp mpi hybrid opencl run benchmark plot clean test_image dirs
+.PHONY: all sequential openmp mpi hybrid opencl run gui benchmark plot clean test_image dirs
 
 all: dirs sequential openmp mpi hybrid opencl
 
@@ -97,6 +98,10 @@ run: all test_image
 	@echo "\n=== OpenCL GPU ==="
 	$(BIN_OCL) $(IMAGE)
 
+# ── Desktop GUI ──────────────────────────────────────────────────────────────
+gui: all
+	python3 scripts/gui_app.py
+
 # ── Full Benchmark Suite ──────────────────────────────────────────────────────
 benchmark: all test_image
 	bash scripts/benchmark.sh $(IMAGE)
@@ -132,6 +137,7 @@ help:
 	@echo "  hybrid       Build Hybrid MPI+OpenMP binary"
 	@echo "  opencl       Build OpenCL GPU binary"
 	@echo "  run          Quick run with defaults"
+	@echo "  gui          Launch desktop GUI"
 	@echo "  benchmark    Full benchmark suite"
 	@echo "  plot         Generate performance plots"
 	@echo "  test_image   Create synthetic test image"

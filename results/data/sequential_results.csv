@@ -1,6 +1,6 @@
 version,operation,width,height,threads,processes,elapsed_sec,speedup
-sequential,grayscale,5461,8192,1,1,0.0681909,1
-sequential,gaussian_blur,5461,8192,1,1,1.95064,1
-sequential,sobel_edge,5461,8192,1,1,0.256427,1
-sequential,brightness,5461,8192,1,1,0.202087,1
-sequential,histogram_eq,5461,8192,1,1,0.126722,1
+sequential,grayscale,7633,4912,1,1,0.0992624,1
+sequential,gaussian_blur,7633,4912,1,1,2.85918,1
+sequential,sobel_edge,7633,4912,1,1,0.394147,1
+sequential,brightness,7633,4912,1,1,0.299459,1
+sequential,histogram_eq,7633,4912,1,1,0.167225,1

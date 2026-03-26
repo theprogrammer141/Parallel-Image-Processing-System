@@ -73,6 +73,7 @@ Parallel-Image-Processing-System/
 │       └── hybrid_proc.cpp      # Hybrid MPI + OpenMP implementation
 ├── scripts/
 │   ├── benchmark.sh             # Full benchmark sweep script
+│   ├── gui_app.py               # Desktop GUI to run all versions
 │   └── plot_results.py          # Performance visualisation (Python)
 ├── test_images/                 # Input images placed here
 ├── results/
@@ -200,6 +201,24 @@ mpirun -np 4 ./build/hybrid_proc test_images/sample.jpg 4
 make run                            # uses OMP_THREADS=4, MPI_PROCS=4
 make run OMP_THREADS=8 MPI_PROCS=4 IMAGE=test_images/sample.jpg
 ```
+
+### Desktop GUI
+
+```bash
+# Build all binaries and launch the GUI
+make gui
+
+# Or run directly
+python3 scripts/gui_app.py
+```
+
+GUI features:
+- Image picker for your custom photo
+- Per-version toggles (Sequential, OpenMP, MPI, Hybrid, OpenCL)
+- Runtime parameters (OpenMP threads, MPI processes, Hybrid threads)
+- One-click build, run selected/all, and plot generation
+- Live execution logs and timing table
+- Quick open buttons for `results/images` and `results/plots`
 
 Output images appear in `results/images/` and timing CSVs in `results/data/`.
 

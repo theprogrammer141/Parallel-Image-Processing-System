@@ -1,6 +1,6 @@
 version,operation,width,height,threads,processes,elapsed_sec,speedup
-openmp,grayscale,5461,8192,4,1,0.022703,0
-openmp,gaussian_blur,5461,8192,4,1,0.677348,0
-openmp,sobel_edge,5461,8192,4,1,0.11795,0
-openmp,brightness,5461,8192,4,1,0.0836921,0
-openmp,histogram_eq,5461,8192,4,1,0.0545715,0
+openmp,grayscale,7633,4912,4,1,0.0344568,0
+openmp,gaussian_blur,7633,4912,4,1,1.10289,0
+openmp,sobel_edge,7633,4912,4,1,0.168121,0
+openmp,brightness,7633,4912,4,1,0.115466,0
+openmp,histogram_eq,7633,4912,4,1,0.100308,0

@@ -1,6 +1,6 @@
 version,operation,width,height,threads,processes,elapsed_sec,speedup
-mpi,grayscale,5461,8192,1,4,0.0969976,0
-mpi,gaussian_blur,5461,8192,1,4,1.06856,0
-mpi,sobel_edge,5461,8192,1,4,0.10878,0
-mpi,brightness,5461,8192,1,4,0.208306,0
-mpi,histogram_eq,5461,8192,1,4,0.0710452,0
+mpi,grayscale,7633,4912,1,4,0.135387,0
+mpi,gaussian_blur,7633,4912,1,4,1.34815,0
+mpi,sobel_edge,7633,4912,1,4,0.139527,0
+mpi,brightness,7633,4912,1,4,0.295948,0
+mpi,histogram_eq,7633,4912,1,4,0.0587944,0
