@@ -202,7 +202,9 @@ make run                            # uses OMP_THREADS=4, MPI_PROCS=4
 make run OMP_THREADS=8 MPI_PROCS=4 IMAGE=test_images/sample.jpg
 ```
 
-### Desktop GUI
+## GUI Application
+
+The project includes a comprehensive desktop GUI built with `tkinter` and `Pillow` to interact with, compare, and benchmark all parallel implementations effortlessly.
 
 ```bash
 # Build all binaries and launch the GUI
@@ -212,13 +214,27 @@ make gui
 python3 scripts/gui_app.py
 ```
 
-GUI features:
-- Image picker for your custom photo
-- Per-version toggles (Sequential, OpenMP, MPI, Hybrid, OpenCL)
-- Runtime parameters (OpenMP threads, MPI processes, Hybrid threads)
-- One-click build, run selected/all, and plot generation
-- Live execution logs and timing table
-- Quick open buttons for `results/images` and `results/plots`
+### GUI Features
+- **Visual Image Picker:** Easily select your custom photo.
+- **Side-by-Side Preview:** View and compare processed output images with a click-to-zoom feature.
+- **Hover Pixel Inspector:** Inspect RGB values by hovering over pixels (requires `Pillow`).
+- **Execution Control:** Selectively toggle versions (Sequential, OpenMP, MPI, Hybrid, OpenCL).
+- **Runtime Configuration:** Adjust execution parameters dynamically (e.g., OpenMP threads, MPI processes, Hybrid threads).
+- **One-Click Automation:** Build binaries, run selected versions, and generate performance plots seamlessly.
+- **Live Output Stream:** Embedded console streams live execution logs and provides a per-operation timing table.
+- **Quick Links:** Quick access buttons to open `results/images` and `results/plots` directories.
+
+### How to Use the GUI
+1. **Launch the Application**: Run the command `make gui` in your terminal to build dependencies and open the interface.
+2. **Select an Image**: Click the **Browse** button at the top to select an input image from your system.
+3. **Configure Settings**: 
+   - Check the boxes for the versions you want to run (e.g., Sequential, OpenMP, MPI).
+   - Use the sliders/inputs to set the desired number of threads and processes.
+4. **Execute**: Click the **Run Selected** button. You can monitor the progress and execution times in the live console output at the bottom.
+5. **Analyze Results**: 
+   - Select an operation and version from the dropdowns under the "Image Preview" tab to see the side-by-side results.
+   - Click the image to view a larger version.
+   - Click **Generate Plots** to automatically create performance graphs based on your recent runs.
 
 Output images appear in `results/images/` and timing CSVs in `results/data/`.
 
