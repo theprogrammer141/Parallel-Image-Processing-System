@@ -133,21 +133,21 @@ class ImageProcessingGUI(tk.Tk):
     BG_SECTION = "#252d3d"
     BG_LIGHT = "#323d52"
     BG_ACCENT = "#1d293d"
-    
+
     TEXT_PRIMARY = "#ffffff"
     TEXT_SECONDARY = "#a8b5c9"
     TEXT_MUTED = "#6b7a8f"
-    
+
     ACCENT_BLUE = "#0d88ff"
     ACCENT_CYAN = "#00d4ff"
     ACCENT_PURPLE = "#9d47ff"
     ACCENT_GREEN = "#1de9b6"
     ACCENT_ORANGE = "#ff9500"
-    
+
     SUCCESS = "#00cc88"
     WARNING = "#ff9500"
     ERROR = "#ff3333"
-    
+
     # Border and shadow colors
     BORDER = "#3a4556"
     SHADOW = "#000000"
@@ -157,10 +157,10 @@ class ImageProcessingGUI(tk.Tk):
         self.title("🚀 Parallel Image Processing System")
         self.geometry("1400x900")
         self.minsize(1100, 750)
-        
+
         # Configure dark theme
         self.configure(bg=self.BG_DARK)
-        
+
         # Configure ttk style for dark theme
         self._setup_styles()
 
@@ -194,22 +194,22 @@ class ImageProcessingGUI(tk.Tk):
         """Configure ttk style for professional dark theme with advanced styling."""
         style = ttk.Style()
         style.theme_use("clam")
-        
+
         # ===== FRAME STYLES =====
         style.configure("TFrame", background=self.BG_DARK, relief="flat", borderwidth=0)
         style.configure("Panel.TFrame", background=self.BG_PANEL, borderwidth=1, relief="solid")
         style.configure("Section.TFrame", background=self.BG_SECTION, borderwidth=0)
-        
+
         # ===== LABEL STYLES =====
         style.configure("TLabel", background=self.BG_DARK, foreground=self.TEXT_PRIMARY, font=("Segoe UI", 10))
         style.configure("Title.TLabel", background=self.BG_DARK, foreground=self.ACCENT_CYAN, font=("Segoe UI", 14, "bold"))
         style.configure("Heading.TLabel", background=self.BG_DARK, foreground=self.ACCENT_CYAN, font=("Segoe UI", 11, "bold"))
         style.configure("Muted.TLabel", background=self.BG_DARK, foreground=self.TEXT_MUTED, font=("Segoe UI", 8))
-        
+
         # ===== LABELFRAME STYLES =====
         style.configure("TLabelFrame", background=self.BG_PANEL, foreground=self.ACCENT_CYAN, relief="solid", borderwidth=1, font=("Segoe UI", 10, "bold"))
         style.configure("TLabelFrame.Label", background=self.BG_PANEL, foreground=self.ACCENT_CYAN)
-        
+
         # ===== BUTTON STYLES =====
         # Primary buttons (blue)
         style.configure(
@@ -230,7 +230,7 @@ class ImageProcessingGUI(tk.Tk):
             ],
             foreground=[("disabled", self.TEXT_MUTED)]
         )
-        
+
         # Accent buttons (cyan/green)
         style.configure(
             "Accent.TButton",
@@ -249,7 +249,7 @@ class ImageProcessingGUI(tk.Tk):
                 ("disabled", self.BG_LIGHT)
             ]
         )
-        
+
         # Secondary buttons (outline style)
         style.configure(
             "Secondary.TButton",
@@ -271,11 +271,11 @@ class ImageProcessingGUI(tk.Tk):
                 ("active", self.ACCENT_CYAN)
             ]
         )
-        
+
         # ===== CHECKBOX & RADIO STYLES =====
         style.configure("TCheckbutton", background=self.BG_DARK, foreground=self.TEXT_PRIMARY, font=("Segoe UI", 10))
         style.map("TCheckbutton", background=[("active", self.BG_SECTION)])
-        
+
         # ===== INPUT STYLES =====
         style.configure(
             "TEntry",
@@ -287,7 +287,7 @@ class ImageProcessingGUI(tk.Tk):
             padding=6
         )
         style.map("TEntry", fieldbackground=[("focus", self.BG_ACCENT)])
-        
+
         style.configure(
             "TCombobox",
             fieldbackground=self.BG_LIGHT,
@@ -299,7 +299,7 @@ class ImageProcessingGUI(tk.Tk):
             padding=6
         )
         style.map("TCombobox", fieldbackground=[("focus", self.BG_ACCENT)])
-        
+
         # ===== TREEVIEW STYLES =====
         style.configure(
             "Treeview",
@@ -322,7 +322,7 @@ class ImageProcessingGUI(tk.Tk):
         )
         style.map("Treeview", background=[("selected", self.BG_ACCENT)])
         style.map("Treeview.Heading", background=[("active", self.BG_LIGHT)])
-        
+
         # ===== PROGRESS BAR STYLES =====
         style.configure(
             "Horizontal.TProgressbar",
@@ -332,7 +332,7 @@ class ImageProcessingGUI(tk.Tk):
             relief="solid",
             height=8
         )
-        
+
         # ===== SCROLLBAR STYLES =====
         style.configure(
             "Horizontal.TScrollbar",
@@ -361,7 +361,7 @@ class ImageProcessingGUI(tk.Tk):
         # ===== HEADER SECTION =====
         header = tk.Canvas(main, height=70, bg=self.BG_DARKER, highlightthickness=0)
         header.pack(fill=tk.X)
-        
+
         title_text = tk.Label(
             header,
             text="🚀 Parallel Image Processing System",
@@ -370,7 +370,7 @@ class ImageProcessingGUI(tk.Tk):
             fg=self.ACCENT_CYAN
         )
         title_text.pack(pady=12)
-        
+
         # Divider line
         divider1 = tk.Canvas(main, height=1, bg=self.BORDER, highlightthickness=0)
         divider1.pack(fill=tk.X)
@@ -869,12 +869,12 @@ class ImageProcessingGUI(tk.Tk):
         # Toolbar with buttons
         toolbar = ttk.Frame(win, padding=8)
         toolbar.pack(fill=tk.X)
-        
+
         ttk.Button(toolbar, text="🔍− Zoom Out", command=lambda: self._zoom_adjust(panel, 0.8)).pack(side=tk.LEFT, padx=(0, 6))
         ttk.Button(toolbar, text="🔍+ Zoom In", command=lambda: self._zoom_adjust(panel, 1.25)).pack(side=tk.LEFT, padx=(0, 6))
         ttk.Button(toolbar, text="🎯 Fit", command=lambda: self._zoom_reset(panel)).pack(side=tk.LEFT, padx=(0, 6))
         ttk.Button(toolbar, text="💾 Save", command=lambda: self._save_zoom_image(panel, path)).pack(side=tk.LEFT)
-        
+
         info_var = tk.StringVar(value="Loading...")
         info_label = ttk.Label(toolbar, textvariable=info_var, foreground=self.ACCENT_CYAN)
         info_label.pack(side=tk.LEFT, padx=(20, 0))
@@ -882,7 +882,7 @@ class ImageProcessingGUI(tk.Tk):
         # Canvas with image
         canvas_frame = ttk.Frame(win, padding=4)
         canvas_frame.pack(fill=tk.BOTH, expand=True)
-        
+
         canvas = tk.Canvas(
             canvas_frame,
             background=self.BG_PANEL,
@@ -890,7 +890,7 @@ class ImageProcessingGUI(tk.Tk):
             highlightbackground=self.BG_LIGHT
         )
         canvas.pack(fill=tk.BOTH, expand=True)
-        
+
         # Image label inside canvas
         img_label = tk.Label(
             canvas,
@@ -995,19 +995,19 @@ class ImageProcessingGUI(tk.Tk):
         if not st or not st.get("base_img"):
             messagebox.showwarning("Save", "No image to save.")
             return
-        
+
         try:
             base = st["base_img"]
             scale = float(st.get("scale", 1.0))
             new_w = max(int(base.width * scale), 1)
             new_h = max(int(base.height * scale), 1)
             resized = base.resize((new_w, new_h), PIL_LANCZOS)
-            
+
             # Generate filename
             suffix = f"_zoom_{int(scale*100)}pct.png"
             save_name = original_path.stem + suffix
             save_path = IMAGES_DIR / save_name
-            
+
             resized.save(str(save_path))
             messagebox.showinfo("Save", f"✅ Saved to:\n{save_name}")
         except Exception as e:
@@ -1080,7 +1080,7 @@ class ImageProcessingGUI(tk.Tk):
         self.btn_run_selected.configure(state=state)
         self.btn_run_all.configure(state=state)
         self.btn_plot.configure(state=state)
-        
+
         # Update status with colors
         if busy:
             self.status_var.set(f"⏳ {status}")
@@ -1125,7 +1125,7 @@ class ImageProcessingGUI(tk.Tk):
         if version == "sequential":
             return [str(BUILD_DIR / "sequential"), str(image)]
         if version == "openmp":
-            return [str(BUILD_DIR / "openmp_proc"), str(image), str(omp_t)]
+            return [str(BUILD_DIR / "openmp_proc"), "-i", str(image), "-t", str(omp_t)]
         if version == "mpi":
             return ["mpirun", "-np", str(mpi_p), str(BUILD_DIR / "mpi_proc"), str(image)]
         if version == "hybrid":
@@ -1134,7 +1134,9 @@ class ImageProcessingGUI(tk.Tk):
                 "-np",
                 str(mpi_p),
                 str(BUILD_DIR / "hybrid_proc"),
+                "-i",
                 str(image),
+                "-t",
                 str(hyb_t),
             ]
         if version == "opencl":
@@ -1300,13 +1302,9 @@ class ImageProcessingGUI(tk.Tk):
         threading.Thread(target=self._worker_plot, daemon=True).start()
 
     def _worker_plot(self) -> None:
-        all_csv = DATA_DIR / "all_results.csv"
-        if all_csv.exists():
-            try:
-                all_csv.unlink()
-                self.log_queue.put("♻️ Removed stale all_results.csv\n")
-            except OSError as e:
-                self.log_queue.put(f"⚠️ Warning: could not remove all_results.csv: {e}\n")
+        self.log_queue.put(
+            "📊 Keeping existing benchmark CSV files and regenerating plots.\n"
+        )
 
         rc = self._run_subprocess([sys.executable, "scripts/plot_results.py"], "📊 Generating plots")
         status = "Plots generated successfully" if rc == 0 else "Plot generation failed"

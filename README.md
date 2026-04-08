@@ -1,6 +1,6 @@
 # Parallel Image Processing System
 
-A high-performance image processing system demonstrating three levels of parallelism using **OpenMP**, **MPI**, and a **Hybrid MPI+OpenMP** approach, developed as a final project for the Parallel & Distributed Computing (PDC) Lab.
+A high-performance image processing system demonstrating CPU and GPU acceleration using **OpenMP**, **MPI**, **Hybrid MPI+OpenMP**, and **OpenCL**, developed as a final project for the Parallel & Distributed Computing (PDC) Lab.
 
 ---
 
@@ -15,8 +15,9 @@ A high-performance image processing system demonstrating three levels of paralle
 7. [Build](#build)
 8. [Usage](#usage)
 9. [Benchmark & Plot](#benchmark--plot)
-10. [Performance Results](#performance-results)
-11. [Technical Details](#technical-details)
+10. [Correctness Testing](#correctness-testing)
+11. [Performance Results](#performance-results)
+12. [Technical Details](#technical-details)
 
 ---
 
@@ -32,6 +33,7 @@ This project implements and compares:
 | OpenMP     | Shared-memory threads | Single multi-core machine |
 | MPI        | Distributed processes | Multi-node clusters       |
 | Hybrid     | MPI × OpenMP          | Full cluster utilisation  |
+| OpenCL     | GPU / Accelerator     | Throughput-oriented kernels |
 
 ---
 
@@ -104,7 +106,7 @@ Parallel-Image-Processing-System/
 
 - `#pragma omp parallel for schedule(static)` over the outer row loop
 - Thread count controlled by `OMP_NUM_THREADS` or the CLI `-t` argument
-- Histogram equalization uses thread-local partial histograms + `#pragma omp critical` reduction
+- Histogram equalization uses OpenMP array reduction over 256 bins
 
 ### MPI
 
@@ -131,6 +133,9 @@ sudo apt install -y \
     libopencv-dev \
     libopenmpi-dev \
     openmpi-bin \
+   ocl-icd-opencl-dev \
+   opencl-headers \
+   pocl-opencl-icd \
     python3-pip
 
 pip3 install pandas matplotlib numpy
@@ -153,7 +158,7 @@ python3 -c "import cv2; print(cv2.__version__)"
 # Clone / navigate to project
 cd Parallel-Image-Processing-System
 
-# Build all four binaries
+# Build all five binaries
 make all
 
 # Or build individually
@@ -161,6 +166,10 @@ make sequential
 make openmp
 make mpi
 make hybrid
+make opencl
+
+# Run correctness checks
+make test
 ```
 
 Binaries are placed in `build/`.
@@ -187,12 +196,17 @@ cp /path/to/your/photo.jpg test_images/sample.jpg
 
 # OpenMP (8 threads)
 ./build/openmp_proc test_images/sample.jpg 8
+# (or: ./build/openmp_proc -i test_images/sample.jpg -t 8)
 
 # MPI (4 processes)
 mpirun -np 4 ./build/mpi_proc test_images/sample.jpg
 
 # Hybrid (4 processes, 4 threads each = 16 total workers)
 mpirun -np 4 ./build/hybrid_proc test_images/sample.jpg 4
+# (or: mpirun -np 4 ./build/hybrid_proc -i test_images/sample.jpg -t 4)
+
+# OpenCL (GPU/accelerator)
+./build/opencl_proc test_images/sample.jpg
 ```
 
 ### Quick run with defaults
@@ -248,7 +262,15 @@ make benchmark
 
 # Generate all performance charts
 make plot
+
+# Optional benchmark rigor controls
+WARMUP_RUNS=1 REPEAT_RUNS=5 make benchmark
+MPI_OVERSUBSCRIBE=0 make benchmark
+OPENCL_REQUIRED=1 make benchmark
 ```
+
+`make benchmark` now runs warmup/repeat timing and stores median elapsed time per configuration.
+OpenCL rows are included when the runtime is available.
 
 Charts saved to `results/plots/`:
 
@@ -259,6 +281,22 @@ Charts saved to `results/plots/`:
 | `elapsed_time_heatmap.png`   | Hybrid elapsed time heatmap (P × T)            |
 | `scalability_efficiency.png` | Parallel efficiency % vs. workers              |
 | `summary_table.png`          | Side-by-side timing & speedup table            |
+
+---
+
+## Correctness Testing
+
+```bash
+# Build and run automated correctness checks
+make test
+```
+
+The test harness:
+- generates a deterministic small image
+- runs Sequential, OpenMP, MPI, and Hybrid (OpenCL when available)
+- compares each output image against the sequential baseline with per-operation tolerances
+
+Continuous Integration is configured in `.github/workflows/ci.yml`.
 
 ---
 

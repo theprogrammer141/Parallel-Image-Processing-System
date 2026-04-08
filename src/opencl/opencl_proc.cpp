@@ -377,10 +377,12 @@ static void histogram_eq_gpu(const cv::Mat& src, cv::Mat& dst,
     cl_check(err, "kernel build_histogram");
 
     int w = gray.cols, h = gray.rows;
-    clSetKernelArg(k_build, 0, sizeof(cl_mem), &d_src);
-    clSetKernelArg(k_build, 1, sizeof(cl_mem), &d_hist);
-    clSetKernelArg(k_build, 2, sizeof(int),    &w);
-    clSetKernelArg(k_build, 3, sizeof(int),    &h);
+    cl_check(clSetKernelArg(k_build, 0, sizeof(cl_mem), &d_src), "setarg build_histogram src");
+    cl_check(clSetKernelArg(k_build, 1, sizeof(cl_mem), &d_hist), "setarg build_histogram hist");
+    cl_check(clSetKernelArg(k_build, 2, sizeof(int),    &w), "setarg build_histogram width");
+    cl_check(clSetKernelArg(k_build, 3, sizeof(int),    &h), "setarg build_histogram height");
+    cl_check(clSetKernelArg(k_build, 4, 256 * sizeof(cl_int), nullptr),
+             "setarg build_histogram local_hist");
 
     dispatch2d(cl.queue, k_build, w, h, cl.wg);
 

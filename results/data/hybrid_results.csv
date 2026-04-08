@@ -1,6 +1,6 @@
 version,operation,width,height,threads,processes,elapsed_sec,speedup
-hybrid,grayscale,7633,4912,4,4,0.108378,0
-hybrid,gaussian_blur,7633,4912,4,4,0.658589,0
-hybrid,sobel_edge,7633,4912,4,4,0.0931693,0
-hybrid,brightness,7633,4912,4,4,0.212913,0
-hybrid,histogram_eq,7633,4912,4,4,0.0630605,0
+hybrid,grayscale,5461,8192,4,4,0.093195,0
+hybrid,gaussian_blur,5461,8192,4,4,0.735768,0
+hybrid,sobel_edge,5461,8192,4,4,0.127784,0
+hybrid,brightness,5461,8192,4,4,0.163456,0
+hybrid,histogram_eq,5461,8192,4,4,0.0736895,0

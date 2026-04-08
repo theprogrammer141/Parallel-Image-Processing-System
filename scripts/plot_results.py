@@ -68,8 +68,27 @@ def load_data(csv_path: str) -> pd.DataFrame:
     if p.exists():
         return pd.read_csv(p)
 
-    # Fall back: merge every *_results.csv in results/data/
-    parts = list(DATA_DIR.glob("*_results.csv"))
+    # Fall back: prefer full benchmark sweep outputs when present.
+    seq_csv = DATA_DIR / "sequential_results.csv"
+    sweep_parts = []
+    sweep_parts.extend(sorted(DATA_DIR.glob("openmp_t*.csv")))
+    sweep_parts.extend(sorted(DATA_DIR.glob("mpi_p*.csv")))
+    sweep_parts.extend(sorted(DATA_DIR.glob("hybrid_p*_t*.csv")))
+
+    if (DATA_DIR / "opencl.csv").exists():
+        sweep_parts.append(DATA_DIR / "opencl.csv")
+    elif (DATA_DIR / "opencl_results.csv").exists():
+        sweep_parts.append(DATA_DIR / "opencl_results.csv")
+
+    if sweep_parts:
+        parts = [seq_csv] if seq_csv.exists() else []
+        parts.extend(sweep_parts)
+    else:
+        # Final fallback: merge any direct per-version outputs.
+        parts = [
+            f for f in DATA_DIR.glob("*_results.csv") if f.name != "all_results.csv"
+        ]
+
     if not parts:
         print("ERROR: No result CSVs found. Run 'make run' or 'make benchmark' first.")
         sys.exit(1)
@@ -77,20 +96,26 @@ def load_data(csv_path: str) -> pd.DataFrame:
     frames = [pd.read_csv(f) for f in parts]
     combined = pd.concat(frames, ignore_index=True)
 
-    # Compute speedup relative to sequential baseline per operation
-    seq = combined[combined["version"] == "sequential"].set_index("operation")[
-        "elapsed_sec"
-    ]
+    # Compute speedup relative to the best sequential baseline per operation.
+    seq = (
+        combined[combined["version"] == "sequential"]
+        .groupby("operation", as_index=True)["elapsed_sec"]
+        .min()
+    )
 
     def add_speedup(row):
         base = seq.get(row["operation"], None)
-        return (
-            round(base / row["elapsed_sec"], 4)
-            if base and row["elapsed_sec"] > 0
-            else row["speedup"]
-        )
+        if row["version"] == "sequential":
+            return 1.0
+        if base is None or row["elapsed_sec"] <= 0:
+            return row.get("speedup", 0)
+        return round(base / row["elapsed_sec"], 4)
 
     combined["speedup"] = combined.apply(add_speedup, axis=1)
+    combined = combined.sort_values(
+        ["version", "operation", "processes", "threads"],
+        kind="mergesort",
+    ).reset_index(drop=True)
 
     # Save merged file for future use
     out = DATA_DIR / "all_results.csv"
@@ -102,7 +127,7 @@ def load_data(csv_path: str) -> pd.DataFrame:
 df = load_data(CSV_PATH)
 df["workers"] = df["threads"] * df["processes"]
 print(f"Loaded {len(df)} rows")
-print(df.to_string(index=False))
+print("Rows by version:\n" + df.groupby("version")["operation"].count().to_string())
 
 # ─── 1. Speedup Line Chart per Operation ─────────────────────────────────────
 fig, axes = plt.subplots(2, 3, figsize=(16, 9))
@@ -233,12 +258,9 @@ for ver in ["openmp", "mpi", "hybrid", "opencl"]:
     sub = df[(df["version"] == ver)].copy()
     if sub.empty:
         continue
-    eff = (
-        sub.groupby("workers")
-        .apply(lambda g: (g["speedup"].max() / g["workers"].iloc[0]) * 100)
-        .reset_index()
-    )
-    eff.columns = ["workers", "efficiency"]
+    eff = sub.groupby("workers", as_index=False)["speedup"].max()
+    eff["efficiency"] = (eff["speedup"] / eff["workers"]) * 100
+    eff = eff[["workers", "efficiency"]]
     eff = eff.sort_values("workers")
     ax.plot(
         eff["workers"],

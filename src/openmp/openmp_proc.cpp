@@ -15,15 +15,31 @@
 
 #include "image_processing.h"
 #include <omp.h>
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 
 // ─── Timing ──────────────────────────────────────────────────────────────────
 // Use omp_get_wtime() for wall-clock timing under OpenMP
 static double wtime() { return omp_get_wtime(); }
+
+static int parse_positive_int(const std::string& s, const char* what) {
+    size_t pos = 0;
+    long long v = 0;
+    try {
+        v = std::stoll(s, &pos);
+    } catch (const std::exception&) {
+        throw std::invalid_argument(std::string("Invalid ") + what + ": '" + s + "'");
+    }
+    if (pos != s.size() || v <= 0 || v > std::numeric_limits<int>::max()) {
+        throw std::invalid_argument(std::string("Invalid ") + what + ": '" + s + "'");
+    }
+    return static_cast<int>(v);
+}
 
 // ─── 1. Grayscale ────────────────────────────────────────────────────────────
 void grayscale_omp(const cv::Mat& src, cv::Mat& dst, int nthreads) {
@@ -149,19 +165,14 @@ void histogram_equalize_omp(const cv::Mat& src, cv::Mat& dst, int nthreads) {
 
     int total = gray.rows * gray.cols;
 
-    // Parallel histogram using thread-local arrays, then reduction
+    // Parallel histogram reduction across 256 bins (OpenMP array reduction)
     int hist[256] = {};
-    #pragma omp parallel num_threads(nthreads)
-    {
-        int local_hist[256] = {};
-        #pragma omp for schedule(static) nowait
-        for (int r = 0; r < gray.rows; ++r) {
-            const uchar* rp = gray.ptr<uchar>(r);
-            for (int c = 0; c < gray.cols; ++c)
-                local_hist[rp[c]]++;
+    #pragma omp parallel for schedule(static) num_threads(nthreads) reduction(+:hist[:256])
+    for (int r = 0; r < gray.rows; ++r) {
+        const uchar* rp = gray.ptr<uchar>(r);
+        for (int c = 0; c < gray.cols; ++c) {
+            hist[rp[c]]++;
         }
-        #pragma omp critical
-        for (int i = 0; i < 256; ++i) hist[i] += local_hist[i];
     }
 
     // CDF and LUT (serial — O(256), negligible)
@@ -209,14 +220,63 @@ int main(int argc, char* argv[]) {
     std::string csv    = "results/data/openmp_results.csv";
     int nthreads = omp_get_max_threads();
 
-    // Simple arg parsing: ./openmp_proc [image] [threads]
-    if (argc > 1) input    = argv[1];
-    if (argc > 2) nthreads = std::stoi(argv[2]);
+    // Supports both positional args and flags:
+    //   ./openmp_proc [image] [threads]
+    //   ./openmp_proc -i <image> -t <threads>
+    std::vector<std::string> positional;
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "-h" || arg == "--help") {
+            std::cout << "Usage: " << argv[0] << " [image] [threads]\n"
+                      << "       " << argv[0] << " -i <image> -t <threads>\n";
+            return 0;
+        }
+        if (arg == "-i" || arg == "--image") {
+            if (i + 1 >= argc) {
+                std::cerr << "Error: missing value for " << arg << "\n";
+                return 1;
+            }
+            input = argv[++i];
+            continue;
+        }
+        if (arg == "-t" || arg == "--threads") {
+            if (i + 1 >= argc) {
+                std::cerr << "Error: missing value for " << arg << "\n";
+                return 1;
+            }
+            try {
+                nthreads = parse_positive_int(argv[++i], "thread count");
+            } catch (const std::exception& e) {
+                std::cerr << e.what() << "\n";
+                return 1;
+            }
+            continue;
+        }
+        if (!arg.empty() && arg[0] == '-') {
+            std::cerr << "Error: unknown option '" << arg << "'\n";
+            return 1;
+        }
+        positional.push_back(arg);
+    }
+
+    try {
+        if (!positional.empty()) input = positional[0];
+        if (positional.size() >= 2) nthreads = parse_positive_int(positional[1], "thread count");
+        if (positional.size() > 2) {
+            std::cerr << "Error: too many positional arguments\n";
+            std::cerr << "Usage: " << argv[0] << " [image] [threads]\n";
+            return 1;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << e.what() << "\n";
+        return 1;
+    }
 
     cv::Mat img = cv::imread(input, cv::IMREAD_COLOR);
     if (img.empty()) {
         std::cerr << "Error: cannot load '" << input << "'\n";
         std::cerr << "Usage: " << argv[0] << " [image] [threads]\n";
+        std::cerr << "       " << argv[0] << " -i <image> -t <threads>\n";
         return 1;
     }
 

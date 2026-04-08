@@ -5,13 +5,15 @@ import os, sys
 
 os.makedirs("test_images", exist_ok=True)
 W, H = 4096, 4096
+SEED = 42
 
 # ── Backend 1: OpenCV Python ──────────────────────────────────────────────────
 try:
     import cv2
     import numpy as np
 
-    img = np.random.randint(0, 256, (H, W, 3), dtype=np.uint8)
+    rng = np.random.default_rng(SEED)
+    img = rng.integers(0, 256, (H, W, 3), dtype=np.uint8)
     cv2.imwrite("test_images/sample.jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 95])
     print(f"Created test_images/sample.jpg ({W}x{H}) [via cv2]")
     sys.exit(0)
@@ -23,7 +25,8 @@ try:
     from PIL import Image
     import numpy as np
 
-    arr = np.random.randint(0, 256, (H, W, 3), dtype=np.uint8)
+    rng = np.random.default_rng(SEED)
+    arr = rng.integers(0, 256, (H, W, 3), dtype=np.uint8)
     Image.fromarray(arr, "RGB").save("test_images/sample.jpg", quality=95)
     print(f"Created test_images/sample.jpg ({W}x{H}) [via Pillow]")
     sys.exit(0)

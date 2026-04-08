@@ -13,6 +13,9 @@ results/data/all_results.csv
 # Uncomment the line below to exclude them as well:
 # results/data/
 
+# Benchmark temporary repeat-run cache
+results/data/.runs/
+
 # ── Python cache ──────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]

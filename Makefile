@@ -47,7 +47,7 @@ IMAGE      ?= test_images/sample.jpg
 OMP_THREADS ?= 4
 MPI_PROCS   ?= 4
 
-.PHONY: all sequential openmp mpi hybrid opencl run gui benchmark plot clean test_image dirs
+.PHONY: all sequential openmp mpi hybrid opencl run gui benchmark plot test clean test_image dirs
 
 all: dirs sequential openmp mpi hybrid opencl
 
@@ -110,6 +110,10 @@ benchmark: all test_image
 plot:
 	python3 scripts/plot_results.py
 
+# ── Correctness Tests ─────────────────────────────────────────────────────────
+test: all
+	python3 tests/test_correctness.py
+
 # ── Generate / download test image ───────────────────────────────────────────
 # Accepts either JPEG or PPM output from gen_test_image.py
 test_image:
@@ -140,6 +144,7 @@ help:
 	@echo "  gui          Launch desktop GUI"
 	@echo "  benchmark    Full benchmark suite"
 	@echo "  plot         Generate performance plots"
+	@echo "  test         Run automated correctness checks"
 	@echo "  test_image   Create synthetic test image"
 	@echo "  clean        Remove build artefacts"
 	@echo ""

@@ -16,19 +16,39 @@
  * Convert colour images on the host or with grayscale.cl before calling these.
  */
 
-/* ── Pass 1: histogram accumulation ─────────────────────────────────────── */
+/* ── Pass 1: histogram accumulation with local-memory partial histograms ── */
 __kernel void build_histogram(
     __global const uchar* src,    /* grayscale input              */
     __global       int*   hist,   /* 256-element int array (init to 0) */
     int width,
-    int height)
+    int height,
+    __local        int*   local_hist)
 {
+    int lid = get_local_id(1) * get_local_size(0) + get_local_id(0);
+    int lsize = get_local_size(0) * get_local_size(1);
+
+    /* Zero local histogram cooperatively */
+    for (int i = lid; i < 256; i += lsize) {
+        local_hist[i] = 0;
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
     int x = get_global_id(0);
     int y = get_global_id(1);
-    if (x >= width || y >= height) return;
+    if (x < width && y < height) {
+        uchar val = src[y * width + x];
+        atomic_inc((volatile __local int*)&local_hist[(int)val]);
+    }
 
-    uchar val = src[y * width + x];
-    atomic_add(&hist[(int)val], 1);
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    /* Flush local bins to global histogram */
+    for (int i = lid; i < 256; i += lsize) {
+        int count = local_hist[i];
+        if (count > 0) {
+            atomic_add((volatile __global int*)&hist[i], count);
+        }
+    }
 }
 
 /* ── Pass 2: apply look-up table ─────────────────────────────────────────── */

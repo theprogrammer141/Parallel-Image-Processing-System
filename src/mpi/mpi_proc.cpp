@@ -22,6 +22,7 @@
 
 #include "image_processing.h"
 #include <mpi.h>
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <fstream>
@@ -33,14 +34,51 @@
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 static double wtime() { return MPI_Wtime(); }
 
-// Flatten/unflatten helpers so we can send Mat data via MPI
-static std::vector<uchar> mat_to_vec(const cv::Mat& m) {
-    return std::vector<uchar>(m.data, m.data + m.total() * m.elemSize());
+static const uchar* root_contiguous_ptr(const cv::Mat& src, cv::Mat& storage) {
+    if (src.isContinuous()) return src.data;
+    storage = src.clone();
+    return storage.data;
 }
-static cv::Mat vec_to_mat(const std::vector<uchar>& v, int rows, int cols, int type) {
-    cv::Mat m(rows, cols, type);
-    std::copy(v.begin(), v.end(), m.data);
-    return m;
+
+static cv::Mat vec_view(std::vector<uchar>& v, int rows, int cols, int type) {
+    if (rows <= 0 || cols <= 0) return cv::Mat(rows, cols, type);
+    return cv::Mat(rows, cols, type, v.data());
+}
+
+static void pack_color_halo_rows(const std::vector<uchar>& local_src,
+                                 int local_rows, int W, int halo,
+                                 bool top, std::vector<uchar>& out) {
+    out.assign(halo * W * 3, 0);
+    if (local_rows <= 0) return;
+
+    for (int h = 0; h < halo; ++h) {
+        int src_row = 0;
+        if (top) {
+            src_row = std::min(h, local_rows - 1);
+        } else {
+            src_row = std::max(local_rows - halo + h, 0);
+        }
+        const uchar* row_ptr = local_src.data() + src_row * W * 3;
+        std::copy(row_ptr, row_ptr + W * 3, out.data() + h * W * 3);
+    }
+}
+
+static void pack_gray_halo_rows(const std::vector<uchar>& local_gray,
+                                int local_rows, int W, int halo,
+                                bool top, std::vector<uchar>& out) {
+    out.assign(halo * W, 0);
+    if (local_rows <= 0) return;
+
+    for (int h = 0; h < halo; ++h) {
+        int src_row = 0;
+        if (top) {
+            src_row = std::min(h, local_rows - 1);
+        } else {
+            src_row = std::max(local_rows - halo + h, 0);
+        }
+        const uchar* row_ptr = local_gray.data() + src_row * W;
+        std::copy(row_ptr, row_ptr + W, out.data() + h * W);
+    }
 }
 
 // ─── Build scatter/gather layout ─────────────────────────────────────────────
@@ -86,18 +124,19 @@ static void mpi_grayscale(const cv::Mat& img, cv::Mat& dst,
 
     // Scatter source
     std::vector<uchar> local_src(sl.rows_per_rank[rank] * W * 3);
-    std::vector<uchar> flat_src;
-    if (rank == 0) flat_src = mat_to_vec(img);
+    cv::Mat root_src_storage;
+    const uchar* root_src = nullptr;
+    if (rank == 0) root_src = root_contiguous_ptr(img, root_src_storage);
 
     MPI_Barrier(comm);
     double t0 = wtime();
 
-    MPI_Scatterv(flat_src.data(), sl.counts.data(), sl.displs.data(), MPI_UNSIGNED_CHAR,
+    MPI_Scatterv(root_src, sl.counts.data(), sl.displs.data(), MPI_UNSIGNED_CHAR,
                  local_src.data(), sl.counts[rank], MPI_UNSIGNED_CHAR, 0, comm);
 
     // Local compute
     int local_rows = sl.rows_per_rank[rank];
-    cv::Mat local_bgr = vec_to_mat(local_src, local_rows, W, CV_8UC3);
+    cv::Mat local_bgr = vec_view(local_src, local_rows, W, CV_8UC3);
     cv::Mat local_gray(local_rows, W, CV_8UC1);
     for (int r = 0; r < local_rows; ++r) {
         const cv::Vec3b* sp = local_bgr.ptr<cv::Vec3b>(r);
@@ -108,16 +147,13 @@ static void mpi_grayscale(const cv::Mat& img, cv::Mat& dst,
 
     // Gather
     ScatterLayout sl_gray = make_layout(H, nprocs, W, 1);
-    std::vector<uchar> flat_dst;
-    if (rank == 0) flat_dst.resize(H * W);
-    std::vector<uchar> local_gray_vec(local_gray.data, local_gray.data + local_rows*W);
+    if (rank == 0) dst.create(H, W, CV_8UC1);
 
-    MPI_Gatherv(local_gray_vec.data(), sl_gray.counts[rank], MPI_UNSIGNED_CHAR,
-                flat_dst.data(), sl_gray.counts.data(), sl_gray.displs.data(),
+    MPI_Gatherv(local_rows > 0 ? local_gray.data : nullptr, sl_gray.counts[rank], MPI_UNSIGNED_CHAR,
+                rank == 0 ? dst.data : nullptr, sl_gray.counts.data(), sl_gray.displs.data(),
                 MPI_UNSIGNED_CHAR, 0, comm);
 
     elapsed = wtime() - t0;
-    if (rank == 0) dst = vec_to_mat(flat_dst, H, W, CV_8UC1);
 }
 
 // ─── 2. Gaussian Blur (each rank gets 2-row halo above/below) ────────────────
@@ -142,55 +178,60 @@ static void mpi_gaussian_blur(const cv::Mat& img, cv::Mat& dst,
     ScatterLayout sl = make_layout(H, nprocs, W, 3);
 
     std::vector<uchar> local_src(sl.rows_per_rank[rank] * W * 3);
-    std::vector<uchar> flat_src;
-    if (rank == 0) flat_src = mat_to_vec(img);
+    cv::Mat root_src_storage;
+    const uchar* root_src = nullptr;
+    if (rank == 0) root_src = root_contiguous_ptr(img, root_src_storage);
 
     MPI_Barrier(comm);
     double t0 = wtime();
 
-    MPI_Scatterv(flat_src.data(), sl.counts.data(), sl.displs.data(), MPI_UNSIGNED_CHAR,
+    MPI_Scatterv(root_src, sl.counts.data(), sl.displs.data(), MPI_UNSIGNED_CHAR,
                  local_src.data(), sl.counts[rank], MPI_UNSIGNED_CHAR, 0, comm);
 
     int local_rows = sl.rows_per_rank[rank];
 
     // Exchange 2-row halos with neighbours
     int halo = 2;
+    int halo_count = halo * W * 3;
+    int prev = (rank > 0) ? rank - 1 : MPI_PROC_NULL;
+    int next = (rank + 1 < nprocs) ? rank + 1 : MPI_PROC_NULL;
+
+    std::vector<uchar> send_top;
+    std::vector<uchar> send_bottom;
+    pack_color_halo_rows(local_src, local_rows, W, halo, true, send_top);
+    pack_color_halo_rows(local_src, local_rows, W, halo, false, send_bottom);
+
     std::vector<uchar> halo_above(halo * W * 3, 0);
     std::vector<uchar> halo_below(halo * W * 3, 0);
-    int prev = rank - 1, next = rank + 1;
 
-    // Send my top rows to previous rank, receive from next
-    if (prev >= 0)
-        MPI_Send(local_src.data(), halo*W*3, MPI_UNSIGNED_CHAR, prev, 10, comm);
-    if (next < nprocs)
-        MPI_Recv(halo_below.data(), halo*W*3, MPI_UNSIGNED_CHAR, next, 10, comm, MPI_STATUS_IGNORE);
-
-    // Send my bottom rows to next rank, receive from prev
-    if (next < nprocs)
-        MPI_Send(local_src.data() + (local_rows-halo)*W*3, halo*W*3, MPI_UNSIGNED_CHAR, next, 11, comm);
-    if (prev >= 0)
-        MPI_Recv(halo_above.data(), halo*W*3, MPI_UNSIGNED_CHAR, prev, 11, comm, MPI_STATUS_IGNORE);
+    MPI_Sendrecv(send_top.data(), halo_count, MPI_UNSIGNED_CHAR, prev, 10,
+                 halo_below.data(), halo_count, MPI_UNSIGNED_CHAR, next, 10,
+                 comm, MPI_STATUS_IGNORE);
+    MPI_Sendrecv(send_bottom.data(), halo_count, MPI_UNSIGNED_CHAR, next, 11,
+                 halo_above.data(), halo_count, MPI_UNSIGNED_CHAR, prev, 11,
+                 comm, MPI_STATUS_IGNORE);
 
     // Build extended image (halo_above + local + halo_below)
     int ext_rows = halo + local_rows + halo;
-    std::vector<uchar> ext(ext_rows * W * 3);
+    std::vector<uchar> ext(ext_rows * W * 3, 0);
     std::copy(halo_above.begin(), halo_above.end(), ext.begin());
-    std::copy(local_src.begin(), local_src.end(), ext.begin() + halo*W*3);
+    if (local_rows > 0) {
+        std::copy(local_src.begin(), local_src.end(), ext.begin() + halo*W*3);
+    }
     std::copy(halo_below.begin(), halo_below.end(), ext.begin() + (halo+local_rows)*W*3);
 
     // Fill edge halos with border replication
-    // (if rank == 0, halo_above is zeros — replicate first row)
-    if (prev < 0)
+    if (prev == MPI_PROC_NULL && local_rows > 0)
         for (int h = 0; h < halo; ++h)
             std::copy(ext.begin() + halo*W*3, ext.begin() + (halo+1)*W*3,
                       ext.begin() + h*W*3);
-    if (next >= nprocs)
+    if (next == MPI_PROC_NULL && local_rows > 0)
         for (int h = 0; h < halo; ++h)
             std::copy(ext.begin() + (halo+local_rows-1)*W*3,
                       ext.begin() + (halo+local_rows)*W*3,
                       ext.begin() + (halo+local_rows+h)*W*3);
 
-    cv::Mat ext_mat = vec_to_mat(ext, ext_rows, W, CV_8UC3);
+    cv::Mat ext_mat = vec_view(ext, ext_rows, W, CV_8UC3);
     cv::Mat local_out(local_rows, W, CV_8UC3);
 
     for (int r = 0; r < local_rows; ++r) {
@@ -213,15 +254,12 @@ static void mpi_gaussian_blur(const cv::Mat& img, cv::Mat& dst,
     }
 
     ScatterLayout sl_out = make_layout(H, nprocs, W, 3);
-    std::vector<uchar> flat_dst;
-    if (rank == 0) flat_dst.resize(H * W * 3);
-    std::vector<uchar> local_out_vec(local_out.data, local_out.data + local_rows*W*3);
-    MPI_Gatherv(local_out_vec.data(), sl_out.counts[rank], MPI_UNSIGNED_CHAR,
-                flat_dst.data(), sl_out.counts.data(), sl_out.displs.data(),
+    if (rank == 0) dst.create(H, W, CV_8UC3);
+    MPI_Gatherv(local_rows > 0 ? local_out.data : nullptr, sl_out.counts[rank], MPI_UNSIGNED_CHAR,
+                rank == 0 ? dst.data : nullptr, sl_out.counts.data(), sl_out.displs.data(),
                 MPI_UNSIGNED_CHAR, 0, comm);
 
     elapsed = wtime() - t0;
-    if (rank == 0) dst = vec_to_mat(flat_dst, H, W, CV_8UC3);
 }
 
 // ─── 3. Sobel Edge Detection ─────────────────────────────────────────────────
@@ -245,10 +283,12 @@ static void mpi_sobel(const cv::Mat& img, cv::Mat& dst,
     MPI_Bcast(&H, 1, MPI_INT, 0, comm);
 
     // Convert to grayscale on rank 0 before scatter
-    std::vector<uchar> flat_gray;
+    cv::Mat root_gray;
+    const uchar* root_gray_ptr = nullptr;
     if (rank == 0) {
-        cv::Mat gray; local_grayscale(img, gray);
-        flat_gray = mat_to_vec(gray);
+        local_grayscale(img, root_gray);
+        if (!root_gray.isContinuous()) root_gray = root_gray.clone();
+        root_gray_ptr = root_gray.data;
     }
 
     ScatterLayout sl = make_layout(H, nprocs, W, 1);
@@ -257,35 +297,50 @@ static void mpi_sobel(const cv::Mat& img, cv::Mat& dst,
     MPI_Barrier(comm);
     double t0 = wtime();
 
-    MPI_Scatterv(flat_gray.data(), sl.counts.data(), sl.displs.data(), MPI_UNSIGNED_CHAR,
+    MPI_Scatterv(root_gray_ptr, sl.counts.data(), sl.displs.data(), MPI_UNSIGNED_CHAR,
                  local_g.data(), sl.counts[rank], MPI_UNSIGNED_CHAR, 0, comm);
 
     int local_rows = sl.rows_per_rank[rank];
     int halo = 1;
+    int halo_count = halo * W;
 
     // Exchange 1-row halos
+    int prev = (rank > 0) ? rank - 1 : MPI_PROC_NULL;
+    int next = (rank + 1 < nprocs) ? rank + 1 : MPI_PROC_NULL;
+
+    std::vector<uchar> send_top;
+    std::vector<uchar> send_bottom;
+    pack_gray_halo_rows(local_g, local_rows, W, halo, true, send_top);
+    pack_gray_halo_rows(local_g, local_rows, W, halo, false, send_bottom);
+
     std::vector<uchar> halo_above(W, 0), halo_below(W, 0);
-    int prev = rank - 1, next = rank + 1;
-    if (prev >= 0) MPI_Send(local_g.data(), W, MPI_UNSIGNED_CHAR, prev, 20, comm);
-    if (next < nprocs) MPI_Recv(halo_below.data(), W, MPI_UNSIGNED_CHAR, next, 20, comm, MPI_STATUS_IGNORE);
-    if (next < nprocs) MPI_Send(local_g.data() + (local_rows-1)*W, W, MPI_UNSIGNED_CHAR, next, 21, comm);
-    if (prev >= 0) MPI_Recv(halo_above.data(), W, MPI_UNSIGNED_CHAR, prev, 21, comm, MPI_STATUS_IGNORE);
+    MPI_Sendrecv(send_top.data(), halo_count, MPI_UNSIGNED_CHAR, prev, 20,
+                 halo_below.data(), halo_count, MPI_UNSIGNED_CHAR, next, 20,
+                 comm, MPI_STATUS_IGNORE);
+    MPI_Sendrecv(send_bottom.data(), halo_count, MPI_UNSIGNED_CHAR, next, 21,
+                 halo_above.data(), halo_count, MPI_UNSIGNED_CHAR, prev, 21,
+                 comm, MPI_STATUS_IGNORE);
 
     // Build extended strip
     int ext_rows = halo + local_rows + halo;
-    std::vector<uchar> ext(ext_rows * W);
+    std::vector<uchar> ext(ext_rows * W, 0);
     std::copy(halo_above.begin(), halo_above.end(), ext.begin());
-    std::copy(local_g.begin(), local_g.end(), ext.begin() + halo*W);
+    if (local_rows > 0) {
+        std::copy(local_g.begin(), local_g.end(), ext.begin() + halo*W);
+    }
     std::copy(halo_below.begin(), halo_below.end(), ext.begin() + (halo+local_rows)*W);
 
     // Edge replication
-    if (prev < 0)  std::copy(ext.begin()+halo*W, ext.begin()+(halo+1)*W, ext.begin());
-    if (next >= nprocs) std::copy(ext.begin()+(halo+local_rows-1)*W,
+    if (prev == MPI_PROC_NULL && local_rows > 0)
+        std::copy(ext.begin()+halo*W, ext.begin()+(halo+1)*W, ext.begin());
+    if (next == MPI_PROC_NULL && local_rows > 0)
+        std::copy(ext.begin()+(halo+local_rows-1)*W,
                                   ext.begin()+(halo+local_rows)*W,
                                   ext.begin()+(halo+local_rows)*W);
 
-    cv::Mat ext_mat = vec_to_mat(ext, ext_rows, W, CV_8UC1);
+    cv::Mat ext_mat = vec_view(ext, ext_rows, W, CV_8UC1);
     cv::Mat local_out(local_rows, W, CV_8UC1);
+    local_out.setTo(0);
 
     for (int r = 0; r < local_rows; ++r) {
         int rr = r + halo;
@@ -304,19 +359,16 @@ static void mpi_sobel(const cv::Mat& img, cv::Mat& dst,
         local_out.at<uchar>(r,W-1) = 0;
     }
     // Top/bottom border
-    if (rank == 0)        local_out.row(0).setTo(0);
-    if (rank == nprocs-1) local_out.row(local_rows-1).setTo(0);
+    if (local_rows > 0 && rank == 0)        local_out.row(0).setTo(0);
+    if (local_rows > 0 && rank == nprocs-1) local_out.row(local_rows-1).setTo(0);
 
     ScatterLayout sl_out = make_layout(H, nprocs, W, 1);
-    std::vector<uchar> flat_dst;
-    if (rank == 0) flat_dst.resize(H * W);
-    std::vector<uchar> local_vec(local_out.data, local_out.data + local_rows*W);
-    MPI_Gatherv(local_vec.data(), sl_out.counts[rank], MPI_UNSIGNED_CHAR,
-                flat_dst.data(), sl_out.counts.data(), sl_out.displs.data(),
+    if (rank == 0) dst.create(H, W, CV_8UC1);
+    MPI_Gatherv(local_rows > 0 ? local_out.data : nullptr, sl_out.counts[rank], MPI_UNSIGNED_CHAR,
+                rank == 0 ? dst.data : nullptr, sl_out.counts.data(), sl_out.displs.data(),
                 MPI_UNSIGNED_CHAR, 0, comm);
 
     elapsed = wtime() - t0;
-    if (rank == 0) dst = vec_to_mat(flat_dst, H, W, CV_8UC1);
 }
 
 // ─── 4. Brightness / Contrast ────────────────────────────────────────────────
@@ -333,17 +385,18 @@ static void mpi_brightness(const cv::Mat& img, cv::Mat& dst,
 
     ScatterLayout sl = make_layout(H, nprocs, W, 3);
     std::vector<uchar> local_src(sl.rows_per_rank[rank] * W * 3);
-    std::vector<uchar> flat_src;
-    if (rank == 0) flat_src = mat_to_vec(img);
+    cv::Mat root_src_storage;
+    const uchar* root_src = nullptr;
+    if (rank == 0) root_src = root_contiguous_ptr(img, root_src_storage);
 
     MPI_Barrier(comm);
     double t0 = wtime();
 
-    MPI_Scatterv(flat_src.data(), sl.counts.data(), sl.displs.data(), MPI_UNSIGNED_CHAR,
+    MPI_Scatterv(root_src, sl.counts.data(), sl.displs.data(), MPI_UNSIGNED_CHAR,
                  local_src.data(), sl.counts[rank], MPI_UNSIGNED_CHAR, 0, comm);
 
     int local_rows = sl.rows_per_rank[rank];
-    cv::Mat local_bgr = vec_to_mat(local_src, local_rows, W, CV_8UC3);
+    cv::Mat local_bgr = vec_view(local_src, local_rows, W, CV_8UC3);
     cv::Mat local_out(local_rows, W, CV_8UC3);
 
     for (int r = 0; r < local_rows; ++r) {
@@ -356,15 +409,12 @@ static void mpi_brightness(const cv::Mat& img, cv::Mat& dst,
                 static_cast<uchar>(std::clamp(static_cast<int>(sp[c][2]*alpha+beta),0,255)));
     }
 
-    std::vector<uchar> flat_dst;
-    if (rank == 0) flat_dst.resize(H * W * 3);
-    std::vector<uchar> local_vec(local_out.data, local_out.data + local_rows*W*3);
-    MPI_Gatherv(local_vec.data(), sl.counts[rank], MPI_UNSIGNED_CHAR,
-                flat_dst.data(), sl.counts.data(), sl.displs.data(),
+    if (rank == 0) dst.create(H, W, CV_8UC3);
+    MPI_Gatherv(local_rows > 0 ? local_out.data : nullptr, sl.counts[rank], MPI_UNSIGNED_CHAR,
+                rank == 0 ? dst.data : nullptr, sl.counts.data(), sl.displs.data(),
                 MPI_UNSIGNED_CHAR, 0, comm);
 
     elapsed = wtime() - t0;
-    if (rank == 0) dst = vec_to_mat(flat_dst, H, W, CV_8UC3);
 }
 
 // ─── 5. Histogram Equalization ───────────────────────────────────────────────
@@ -377,10 +427,12 @@ static void mpi_histeq(const cv::Mat& img, cv::Mat& dst,
     MPI_Bcast(&H, 1, MPI_INT, 0, comm);
 
     // Convert to gray on rank 0
-    std::vector<uchar> flat_gray;
+    cv::Mat root_gray;
+    const uchar* root_gray_ptr = nullptr;
     if (rank == 0) {
-        cv::Mat gray; local_grayscale(img, gray);
-        flat_gray = mat_to_vec(gray);
+        local_grayscale(img, root_gray);
+        if (!root_gray.isContinuous()) root_gray = root_gray.clone();
+        root_gray_ptr = root_gray.data;
     }
 
     ScatterLayout sl = make_layout(H, nprocs, W, 1);
@@ -389,7 +441,7 @@ static void mpi_histeq(const cv::Mat& img, cv::Mat& dst,
     MPI_Barrier(comm);
     double t0 = wtime();
 
-    MPI_Scatterv(flat_gray.data(), sl.counts.data(), sl.displs.data(), MPI_UNSIGNED_CHAR,
+    MPI_Scatterv(root_gray_ptr, sl.counts.data(), sl.displs.data(), MPI_UNSIGNED_CHAR,
                  local_g.data(), sl.counts[rank], MPI_UNSIGNED_CHAR, 0, comm);
 
     // Local histogram
@@ -421,14 +473,12 @@ static void mpi_histeq(const cv::Mat& img, cv::Mat& dst,
     for (size_t i = 0; i < local_g.size(); ++i)
         local_out[i] = lut[local_g[i]];
 
-    std::vector<uchar> flat_dst;
-    if (rank == 0) flat_dst.resize(H * W);
+    if (rank == 0) dst.create(H, W, CV_8UC1);
     MPI_Gatherv(local_out.data(), sl.counts[rank], MPI_UNSIGNED_CHAR,
-                flat_dst.data(), sl.counts.data(), sl.displs.data(),
+                rank == 0 ? dst.data : nullptr, sl.counts.data(), sl.displs.data(),
                 MPI_UNSIGNED_CHAR, 0, comm);
 
     elapsed = wtime() - t0;
-    if (rank == 0) dst = vec_to_mat(flat_dst, H, W, CV_8UC1);
 }
 
 // ─── CSV Writer ───────────────────────────────────────────────────────────────

@@ -13,6 +13,7 @@
  */
 
 #include "image_processing.h"
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <fstream>
